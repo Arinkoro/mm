@@ -31,18 +31,19 @@ class AttentionModule(nn.Module):
             torch.cat([x, t_reshaped], dim=1))  # (b, c, h, w)
 
         values = self.W_v(vl_features)
-        values = values.view(b * self.n_heads, self.c_per_head,
-                             h, w).view(b * self.n_heads, self.c_per_head, h * w)
+        values = values.view(b, self.n_heads, -1, h * w)
+        # values = values.view(b * self.n_heads, self.c_per_head,
+        #                      h, w).view(b * self.n_heads, self.c_per_head, h * w)
 
-        self_att_map = self.self_att_generator(
-            x)  # (b, num_heads, h * w, h * w)
+        self_att_map = self.self_att_generator(x)
         global_cross_att_map = self.global_att_generator(x, t)
         global_cross_att_map = global_cross_att_map.view(
             b, self.n_heads, 1, h * w)  # (b, num_heads, 1, h * w)
         # (b, num_heads, h * w, h * w)
         att_map = self_att_map + global_cross_att_map
         # (b * num_heads, h * w, h * w)
-        att_map_reshaped = att_map.view(b * self.n_heads, h * w, h * w)
+        # att_map_reshaped = att_map.view(b * self.n_heads, h * w, h * w)
+        att_map_reshaped = att_map.view(b, self.n_heads, h * w, h * w)
 
         # (b * num_heads, c_per_head, h * w)
         att_out = torch.bmm(values, att_map_reshaped.transpose(1, 2))
@@ -71,11 +72,12 @@ class SelfAttentionMap(nn.Module):
         b, c, h, w = x.size()
 
         keys, queries = self.W_k(x), self.W_q(x)
-        keys = keys.view(b * self.n_heads, self.c_per_head, h,
-                         w).view(b * self.n_heads, self.c_per_head, h * w)
-        queries = queries.view(b * self.n_heads, self.c_per_head,
-                               h, w).view(b * self.n_heads, self.c_per_head, h * w)
-
+        # keys = keys.view(b * self.n_heads, self.c_per_head, h,
+        #                  w).view(b * self.n_heads, self.c_per_head, h * w)
+        keys = keys.view(b, self.n_heads, -1, h * w)
+        queries = queries.view(b, self.n_heads, -1, h * w)
+        # queries = queries.view(b * self.n_heads, self.c_per_head,
+        #                        h, w).view(b * self.n_heads, self.c_per_head, h * w)
         att_map = torch.bmm(queries.transpose(1, 2), keys) / \
             (self.c_per_head ** 0.5)
         # (b * num_heads, h * w, h * w), torch.sum(att_map[batch_idx][?]) == 1
@@ -99,16 +101,19 @@ class GlobalCrossAttentionMap(nn.Module):
     def forward(self, x, t):
         b, c, h, w = x.size()
 
-        x_reshape = x.view(b * self.n_heads, self.c_per_head, h, w)
-        x_reshape = x_reshape.view(b * self.n_heads, self.c_per_head, h * w)
+        # x_reshape = x.view(b * self.n_heads, self.c_per_head, h, w)
+        x_reshape = x.view(b, self.n_heads, self.c_per_head, h * w)
+        # x_reshape = x_reshape.view(b * self.n_heads, self.c_per_head, h * w)
 
         t_mapped = self.W_t(t)
-        t_mapped = t_mapped.view(b * self.n_heads, self.c_per_head, 1)
+        # t_mapped = t_mapped.view(b * self.n_heads, self.c_per_head, 1)
+        t_mapped = t_mapped.view(b, self.n_heads, self.c_per_head, 1)
 
         att_map = torch.bmm(x_reshape.transpose(
             1, 2), t_mapped).squeeze(-1) / (self.c_per_head ** 0.5)
         att_map = self.normalize(att_map)  # (b * n_heads, h * w)
-        att_map = att_map.view(b * self.n_heads, 1, h * w)
         att_map = att_map.view(b, self.n_heads, h * w)
+        # att_map = att_map.view(b * self.n_heads, 1, h * w)
+        # att_map = att_map.view(b, self.n_heads, h * w)
 
         return att_map
