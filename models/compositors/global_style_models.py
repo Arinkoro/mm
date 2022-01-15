@@ -23,6 +23,7 @@ class GlobalStyleTransformer2(AbstractGlobalStyleTransformer):
 
         gamma = std_gate * x_std + gamma
         beta = mu_gate * x_mu + beta
+
         # out = gamma * normed_x + beta
         out = gamma * normed_x + beta * normed_x + gamma + beta
         return out
