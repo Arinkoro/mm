@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 
 from models.utils import reshape_text_features_to_concat
+from models.attention_modules.simple_transformer import Transformer, Embedder
 
 
 class AttentionModule(nn.Module):
     def __init__(self, feature_size, text_feature_size, num_heads, *args, **kwargs):
         super().__init__()
-
+        d_model = 512
         self.n_heads = num_heads
         self.c_per_head = feature_size // num_heads
         assert feature_size == self.n_heads * self.c_per_head
@@ -18,30 +19,47 @@ class AttentionModule(nn.Module):
         self.merge = nn.Conv2d(feature_size + text_feature_size, feature_size, kernel_size=1, bias=False)
         self.W_v = nn.Conv2d(feature_size, feature_size, kernel_size=1, bias=False)
         self.W_r = nn.Conv2d(feature_size, feature_size, kernel_size=1)
+        self.transformer = Transformer(d_model, 3, num_heads)
+        self.embed = Embedder(feature_size)
 
     def forward(self, x, t, return_map=False, *args, **kwargs):
         b, c, h, w = x.size()
 
+        # t_reshaped = reshape_text_features_to_concat(t, x.size())
+        # vl_features = self.merge(torch.cat([x, t_reshaped], dim=1))  # (b, c, h, w)
+
+        # values = self.W_v(vl_features)
+        
+        # values = values.view(b, self.n_heads * self.c_per_head, h * w)
+        # self_att_map = self.self_att_generator(x)  # (b, num_heads, h * w, h * w)
+        # global_cross_att_map = self.global_att_generator(x, t)
+        
+        # att_map = self_att_map + global_cross_att_map  # (b, num_heads, h * w, h * w)
+        # att_map_reshaped = att_map.view(b, att_map.shape[1], att_map.shape[2])  # (b * num_heads, h * w, h * w)
+
+        # att_out = torch.bmm(values, att_map_reshaped.transpose(1, 2))  # (b * num_heads, c_per_head, h * w)
+        # att_out = att_out.view(b, self.n_heads * self.c_per_head, h * w)
+        # att_out = att_out.view(b, self.n_heads * self.c_per_head, h, w)
+        # att_out = self.W_r(att_out)
         t_reshaped = reshape_text_features_to_concat(t, x.size())
         vl_features = self.merge(torch.cat([x, t_reshaped], dim=1))  # (b, c, h, w)
 
-        values = self.W_v(vl_features)
-        # values = values.view(b * self.n_heads, self.c_per_head, h, w).view(b * self.n_heads, self.c_per_head, h * w)
-        values = values.view(b, self.n_heads * self.c_per_head, h * w)
-        self_att_map = self.self_att_generator(x)  # (b, num_heads, h * w, h * w)
-        global_cross_att_map = self.global_att_generator(x, t)
-        # global_cross_att_map = global_cross_att_map.view(b, self.n_heads, 1, h * w)  # (b, num_heads, 1, h * w)
-        
-        att_map = self_att_map + global_cross_att_map  # (b, num_heads, h * w, h * w)
-        # att_map_reshaped = att_map.view(b * self.n_heads, h * w, h * w)  # (b * num_heads, h * w, h * w)
-        att_map_reshaped = att_map.view(b, att_map.shape[1], att_map.shape[2])  # (b * num_heads, h * w, h * w)
-
-        att_out = torch.bmm(values, att_map_reshaped.transpose(1, 2))  # (b * num_heads, c_per_head, h * w)
-        att_out = att_out.view(b, self.n_heads * self.c_per_head, h * w)
+        # values = self.W_v(vl_features)
+        revalues = self.embed(vl_features)
+        reimg = self.embed(x)
+        tra = self.transformer(reimg, t, revalues)
+        self_att_map = tra.view(-1, 49, 49)    
+        values = vl_features.view(b, self.n_heads * self.c_per_head, h * w)
+        # self_att_map = self.self_att_generator(x)  # (b, num_heads, h * w, h * w)
+        # global_cross_att_map = self.global_att_generator(x, t)
+        # att_map = self_att_map + global_cross_att_map  # (b, num_heads, h * w, h * w)
+        # att_map_reshaped = att_map.view(b, att_map.shape[1], att_map.shape[2])  # (b * num_heads, h * w, h * w)
+        att_out = torch.bmm(values, self_att_map.transpose(1, 2))  # (b * num_heads, c_per_head, h * w)
+        # att_out = att_out.view(b, self.n_heads * self.c_per_head, h * w)
         att_out = att_out.view(b, self.n_heads * self.c_per_head, h, w)
         att_out = self.W_r(att_out)
 
-        return att_out, att_map if return_map else att_out
+        return att_out, self_att_map if return_map else att_out
 
 
 # class SelfAttentionMap(nn.Module):
@@ -61,7 +79,6 @@ class AttentionModule(nn.Module):
 
 #     def forward(self, x, *args, **kwargs):
 #         b, c, hw = x.size()
-
 #         keys, queries = x, x
 #         # keys = keys.view(b * self.n_heads, self.c_per_head, h, w).view(b * self.n_heads, self.c_per_head, h * w)
 #         # queries = queries.view(b * self.n_heads, self.c_per_head, h, w).view(b * self.n_heads, self.c_per_head, h * w)
