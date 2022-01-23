@@ -2,7 +2,7 @@ from tqdm import tqdm
 
 from trainers.abc import AbstractBaseTrainer
 from utils.metrics import AverageMeterSet
-
+import torch.nn as nn
 
 class TIRGTrainer(AbstractBaseTrainer):
     def __init__(self, models, train_dataloader, criterions, optimizers, lr_schedulers, num_epochs,
@@ -14,6 +14,7 @@ class TIRGTrainer(AbstractBaseTrainer):
         self.text_encoder = self.models['text_encoder']
         self.compositor = self.models['layer4']
         self.metric_loss = self.criterions['metric_loss']
+        self.W_t = nn.Linear(768, 512)
 
     def train_one_epoch(self, epoch):
         average_meter_set = AverageMeterSet()
@@ -30,7 +31,10 @@ class TIRGTrainer(AbstractBaseTrainer):
 
             # Encode and Fuse Reference Images with Texts
             ref_mid_features, _ = self.lower_image_encoder(ref_images)
-            text_features = self.text_encoder(modifiers, len_modifiers)
+            # text_features = self.text_encoder(modifiers, len_modifiers)
+            self.W_t = self.W_t.to(self.device)
+            text_features = self.W_t(modifiers.view(modifiers.shape[0], -1))
+
             composed_ref_features, _ = self.compositor(ref_mid_features, text_features)
             composed_ref_features = self.upper_image_encoder(composed_ref_features)
 

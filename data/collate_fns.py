@@ -14,7 +14,8 @@ class PaddingCollateFunction(object):
         reference_images = torch.stack(reference_images, dim=0)
         target_images = torch.stack(target_images, dim=0)
         seq_lengths = torch.tensor(lengths).long()
-        modifiers = pad_sequence(modifiers, padding_value=self.padding_idx, batch_first=True)
+        modifiers = torch.stack(modifiers, dim=0)
+        # modifiers = pad_sequence(modifiers, padding_value=self.padding_idx, batch_first=True)
         return reference_images, target_images, modifiers, seq_lengths
 
 
@@ -32,7 +33,8 @@ class PaddingCollateFunctionTest(object):
         reference_images, ref_attrs, modifiers, target_attrs, lengths = zip(*batch)
         reference_images = torch.stack(reference_images, dim=0)
         seq_lengths = torch.tensor(lengths).long()
-        modifiers = pad_sequence(modifiers, padding_value=self.padding_idx, batch_first=True)
+        modifiers = torch.stack(modifiers, dim=0)
+        # modifiers = pad_sequence(modifiers, padding_value=self.padding_idx, batch_first=True)
         return reference_images, ref_attrs, modifiers, target_attrs, seq_lengths
 
     def __call__(self, batch: List[tuple]):
